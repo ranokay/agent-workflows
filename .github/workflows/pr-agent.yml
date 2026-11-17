@@ -1,0 +1,41 @@
+name: Optional PR-Agent review
+
+on:
+  workflow_call:
+    inputs:
+      context-files:
+        description: JSON array of project documents read from the default branch
+        required: false
+        type: string
+        default: '["AGENTS.md","CODING_STANDARDS.md","docs/agents/pr-review.md"]'
+    secrets:
+      opencode-key:
+        description: OpenCode Go API key with Models Request permission
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: pr-agent-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Load the trusted shared runner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ranokay/agent-workflows
+          ref: a9f9034adad67cf2920dde045c3efd4150e9f375
+          path: .agent-workflows
+          persist-credentials: false
+
+      - name: Authorize the event and run PR-Agent
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENAI__KEY: ${{ secrets.opencode-key }}
+          REVIEW_CONTEXT_FILES: ${{ inputs.context-files }}
+        run: python3 .agent-workflows/scripts/pr_agent.py
