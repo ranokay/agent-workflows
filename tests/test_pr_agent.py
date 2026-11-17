@@ -188,6 +188,7 @@ class RuntimeTests(unittest.TestCase):
         command = runner.docker_command(Path("/tmp/event.json"), "issue_comment", settings, "test-run")
         self.assertIn("GITHUB_TOKEN", command)
         self.assertIn("OPENAI__KEY", command)
+        self.assertIn("GITHUB_ACTIONS=true", command)
         self.assertNotIn("--privileged", command)
         self.assertNotIn("/var/run/docker.sock", " ".join(command))
         self.assertEqual(settings["config.model"], settings["config.model_reasoning"])

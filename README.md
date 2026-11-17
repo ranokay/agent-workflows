@@ -73,7 +73,16 @@ permissions:
   pull-requests: write
 jobs:
   review:
-    if: github.event_name == 'issue_comment' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event.sender.type != 'Bot' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.type != 'Bot' &&
+        !github.event.pull_request.draft) ||
+       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+        (startsWith(github.event.comment.body, '/review') ||
+         startsWith(github.event.comment.body, '/improve') ||
+         startsWith(github.event.comment.body, '/ask '))))
     uses: ranokay/agent-workflows/.github/workflows/pr-agent.yml@6ad88182eed9dbc5a12024861e3fd2214d18ea12
     with:
       context-files: '["AGENTS.md","CODING_STANDARDS.md","docs/agents/pr-review.md"]'

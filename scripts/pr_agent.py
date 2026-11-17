@@ -194,6 +194,7 @@ def docker_command(event_path, event_name, settings, name):
     command = ["docker", "run", "--rm", "--name", name,
                "--mount", f"type=bind,source={event_path},target=/event.json,readonly",
                "-e", "GITHUB_TOKEN", "-e", "OPENAI__KEY",
+               "-e", "GITHUB_ACTIONS=true",
                "-e", f"GITHUB_EVENT_NAME={event_name}", "-e", "GITHUB_EVENT_PATH=/event.json"]
     for key, value in settings.items():
         command.extend(["-e", f"{key}={value}"])
