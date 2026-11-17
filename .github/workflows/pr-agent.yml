@@ -18,24 +18,54 @@ permissions:
   pull-requests: write
 
 jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      authorized: ${{ steps.authorize.outputs.authorized }}
+      number: ${{ steps.authorize.outputs.number }}
+    steps:
+      - name: Load the trusted shared runner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ranokay/agent-workflows
+          ref: 43f04e8d51284f679e59adcfd535dcb20bcabf73
+          path: .agent-workflows
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.11.27'
+      - name: Authorize the event before it can cancel any review
+        id: authorize
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run --no-project python .agent-workflows/scripts/pr_agent.py --authorize-only
+
   review:
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
-      group: pr-agent-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: pr-agent-${{ github.repository }}-${{ needs.authorize.outputs.number }}
       cancel-in-progress: true
     steps:
       - name: Load the trusted shared runner
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ranokay/agent-workflows
-          ref: a9f9034adad67cf2920dde045c3efd4150e9f375
+          ref: 43f04e8d51284f679e59adcfd535dcb20bcabf73
           path: .agent-workflows
           persist-credentials: false
-
-      - name: Authorize the event and run PR-Agent
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.11.27'
+      - name: Revalidate the request and run PR-Agent
         env:
           GITHUB_TOKEN: ${{ github.token }}
           OPENAI__KEY: ${{ secrets.opencode-key }}
           REVIEW_CONTEXT_FILES: ${{ inputs.context-files }}
-        run: python3 .agent-workflows/scripts/pr_agent.py
+        run: uv run --no-project python .agent-workflows/scripts/pr_agent.py
