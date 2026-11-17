@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -121,21 +122,35 @@ def context_paths(value):
 def cancel_older_runs(api, repository, number, run_id):
     current = api.get(f"repos/{repository}/actions/runs/{run_id}")
     candidates = set()
-    for status in ("in_progress", "queued"):
-        page = 1
-        while True:
-            runs = api.get(f"repos/{repository}/actions/workflows/{current['workflow_id']}/runs"
-                           f"?status={status}&per_page=100&page={page}")["workflow_runs"]
-            for run in runs:
-                same_pr = (any(pr.get("number") == number for pr in run.get("pull_requests", []))
-                           or run.get("display_title") == f"PR-Agent #{number}")
-                if same_pr and run["run_number"] < current["run_number"]:
-                    candidates.add(run["id"])
-            if len(runs) < 100:
-                break
-            page += 1
+    page = 1
+    # Separate status queries can miss runs transitioning between jobs or queues.
+    while True:
+        runs = api.get(f"repos/{repository}/actions/workflows/{current['workflow_id']}/runs"
+                       f"?per_page=100&page={page}")["workflow_runs"]
+        for run in runs:
+            same_pr = (any(pr.get("number") == number for pr in run.get("pull_requests", []))
+                       or run.get("display_title") == f"PR-Agent #{number}")
+            if same_pr and run["run_number"] < current["run_number"] and run["status"] != "completed":
+                candidates.add(run["id"])
+        if len(runs) < 100:
+            break
+        page += 1
+    print(f"Cancellation scan for PR #{number}, run {run_id}: {sorted(candidates)}", flush=True)
     for candidate in sorted(candidates):
+        print(f"Requesting cancellation of run {candidate}", flush=True)
         api.cancel_run(repository, candidate)
+    pending = candidates.copy()
+    for attempt in range(6):
+        for candidate in sorted(pending):
+            state = api.get(f"repos/{repository}/actions/runs/{candidate}")
+            print(f"Run {candidate}: {state['status']} ({state.get('conclusion')})", flush=True)
+            if state["status"] == "completed":
+                pending.remove(candidate)
+        if not pending:
+            return
+        if attempt < 5:
+            time.sleep(2)
+    raise RuntimeError(f"Older runs have not stopped: {sorted(pending)}; refusing overlapping inference")
 
 
 def policy(repository, number, paths):

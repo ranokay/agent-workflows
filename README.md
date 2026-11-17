@@ -17,6 +17,11 @@ digest. The runner image's GitHub artifact attestation was verified against
   Actions-write permission is confined to the authorization job; the inference
   job cannot cancel workflows. Before inference the
   runner checks the current PR head, so obsolete automatic events skip.
+  The authorizer scans all unfinished run states without separate status filters,
+  requests cancellation, and confirms completion before authorizing new model
+  work. If older runs have not stopped after six checks over ten seconds, the
+  new run fails before receiving the model key. Selected run IDs and observed
+  states appear in its logs; a cancellation request alone is not proof of exit.
 - Code suggestions publish a summary with usage and coverage details, plus
   GitHub's committable format for suggestions passing the same score threshold.
   Applying and testing them

@@ -138,14 +138,18 @@ class RuntimeTests(unittest.TestCase):
             def get(self, path):
                 if path.endswith("/runs/123"):
                     return {"workflow_id": 7, "run_number": 10}
-                if "status=queued" in path:
-                    return {"workflow_runs": [{"id": 6, "run_number": 6, "display_title": "PR-Agent #42"}]}
+                if path.endswith("/runs/1") or path.endswith("/runs/6"):
+                    return {"status": "completed", "conclusion": "cancelled"}
                 self.assert_workflow(path)
+                if "status=" in path:
+                    raise AssertionError("Status-filtered queries can miss transitioning runs")
                 return {"workflow_runs": [
-                    {"id": 1, "run_number": 9, "pull_requests": [{"number": 42}]},
-                    {"id": 2, "run_number": 11, "pull_requests": [{"number": 42}]},
-                    {"id": 3, "run_number": 8, "pull_requests": [{"number": 43}]},
-                    {"id": 123, "run_number": 10, "pull_requests": [{"number": 42}]},
+                    {"id": 1, "run_number": 9, "status": "in_progress", "pull_requests": [{"number": 42}]},
+                    {"id": 2, "run_number": 11, "status": "queued", "pull_requests": [{"number": 42}]},
+                    {"id": 3, "run_number": 8, "status": "queued", "pull_requests": [{"number": 43}]},
+                    {"id": 4, "run_number": 7, "status": "completed", "display_title": "PR-Agent #42"},
+                    {"id": 6, "run_number": 6, "status": "waiting", "display_title": "PR-Agent #42"},
+                    {"id": 123, "run_number": 10, "status": "in_progress", "pull_requests": [{"number": 42}]},
                 ]}
 
             def assert_workflow(self, path):
@@ -158,6 +162,53 @@ class RuntimeTests(unittest.TestCase):
         api = RunsAPI()
         runner.cancel_older_runs(api, REPOSITORY, 42, "123")
         self.assertEqual(api.cancelled, [(REPOSITORY, 1), (REPOSITORY, 6)])
+
+    def test_cancellation_waits_for_terminal_state_and_fails_closed_if_it_never_arrives(self):
+        for states, succeeds in ((["queued", "in_progress", "completed"], True),
+                                 (["in_progress"] * 6, False)):
+            with self.subTest(succeeds=succeeds):
+                class RunsAPI:
+                    def get(self, path):
+                        if path.endswith("/runs/123"):
+                            return {"workflow_id": 7, "run_number": 10}
+                        if "/workflows/7/runs?" in path:
+                            return {"workflow_runs": [{"id": 1, "run_number": 9, "status": "pending",
+                                                       "display_title": "PR-Agent #42"}]}
+                        if path.endswith("/runs/1"):
+                            return {"status": states.pop(0)}
+                        raise AssertionError(path)
+
+                    def cancel_run(self, repository, run_id):
+                        self.cancelled = (repository, run_id)
+
+                api = RunsAPI()
+                with patch.object(runner.time, "sleep") as sleep:
+                    if succeeds:
+                        runner.cancel_older_runs(api, REPOSITORY, 42, "123")
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "refusing overlapping inference"):
+                            runner.cancel_older_runs(api, REPOSITORY, 42, "123")
+                    self.assertEqual(sleep.call_count, 2 if succeeds else 5)
+                self.assertEqual(api.cancelled, (REPOSITORY, 1))
+
+    def test_cancellation_failure_cannot_authorize_model_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            payload = path / "event.json"
+            payload.write_text(json.dumps(comment()))
+            outputs = path / "outputs"
+            environment = {"GITHUB_EVENT_PATH": str(payload), "GITHUB_EVENT_NAME": "issue_comment",
+                           "GITHUB_REPOSITORY": REPOSITORY, "GITHUB_TOKEN": "test-token",
+                           "GITHUB_OUTPUT": str(outputs), "GITHUB_STEP_SUMMARY": str(path / "summary"),
+                           "GITHUB_RUN_ID": "123"}
+            with patch.dict(os.environ, environment, clear=True), \
+                    patch.object(runner, "GitHub", return_value=API()), \
+                    patch.object(runner, "cancel_older_runs", side_effect=RuntimeError("still running")), \
+                    patch.object(runner.subprocess, "run") as run:
+                with self.assertRaisesRegex(RuntimeError, "still running"):
+                    runner.main(authorize_only=True)
+                run.assert_not_called()
+            self.assertEqual(outputs.read_text(), "authorized=false\n")
 
     def test_authorization_runs_without_model_credentials_and_only_allows_valid_requests(self):
         for payload, permission, allowed in ((comment(), "write", True), (comment(), "read", False),
