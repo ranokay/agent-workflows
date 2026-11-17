@@ -29,6 +29,7 @@ digest. The runner image's GitHub artifact attestation was verified against
 ## Budgets and coverage
 
 The job timeout is ten minutes; the runner reserves its final minute for cleanup.
+Each model request can take up to five minutes, within that overall limit.
 Review can use up to three chunks; suggestions can use up to two chunks and each
 nonempty suggestion chunk also receives self-reflection. A transient inference
 failure permits one retry, without another provider or fallback model. These

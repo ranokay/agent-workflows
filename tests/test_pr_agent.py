@@ -54,7 +54,7 @@ class EventAuthorizationTests(unittest.TestCase):
             with self.subTest(action=action):
                 payload = event()
                 payload.update(action=action, before="b" * 40, after="a" * 40)
-                normalized, _ = runner.authorize("pull_request_target", payload, REPOSITORY, API())
+                normalized, _ = runner.authorize("pull_request", payload, REPOSITORY, API())
                 self.assertEqual(normalized["pull_request"], pull_request())
 
     def test_bot_author_is_rejected_even_when_a_human_reopens_it(self):
@@ -93,13 +93,18 @@ class EventAuthorizationTests(unittest.TestCase):
         self.assertIsNone(runner.authorize("pull_request", payload, REPOSITORY, api)[0])
         self.assertEqual(api.calls, [])
 
-    def test_only_current_write_permissions_can_request_fork_reviews(self):
-        pr = pull_request()
-        pr["head"]["repo"]["full_name"] = "contributor/fork"
-        for permission in ("none", "read", "triage", "write", "maintain", "admin"):
-            with self.subTest(permission=permission):
-                normalized, _ = runner.authorize("issue_comment", comment(), REPOSITORY, API(pr, permission))
-                self.assertEqual(normalized is not None, permission in {"write", "maintain", "admin"})
+    def test_only_current_write_permissions_can_request_same_repository_and_fork_reviews(self):
+        for source in (REPOSITORY, "contributor/fork"):
+            pr = pull_request()
+            pr["head"]["repo"]["full_name"] = source
+            for permission in ("none", "read", "triage", "write", "maintain", "admin"):
+                for command in ("/review", "/improve", "/ask Explain this change"):
+                    with self.subTest(source=source, permission=permission, command=command):
+                        normalized, _ = runner.authorize("issue_comment", comment(command), REPOSITORY,
+                                                         API(pr, permission))
+                        self.assertEqual(normalized is not None, permission in {"write", "maintain", "admin"})
+                        if normalized:
+                            self.assertEqual(normalized["comment"]["body"], command)
 
     def test_comment_commands_cannot_override_configuration_or_chain_commands(self):
         for body in ("/review --config.model=other", "/improve --extended", "/review\n/improve",
@@ -193,6 +198,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn("/var/run/docker.sock", " ".join(command))
         self.assertEqual(settings["config.model"], settings["config.model_reasoning"])
         self.assertEqual(json.loads(settings["config.fallback_models"]), [])
+        self.assertEqual(settings["config.ai_timeout"], "300")
         self.assertEqual(settings["config.use_repo_settings_file"], "false")
         self.assertEqual(settings["config.restricted_mode"], "true")
         self.assertEqual(settings["pr_code_suggestions.committable_code_suggestions"], "false")

@@ -154,7 +154,7 @@ def policy(repository, number, paths):
         "config.num_retries": "1",
         "config.retry_same_model_on_timeout": "false",
         "config.retry_same_model_on_length": "false",
-        "config.ai_timeout": "120",
+        "config.ai_timeout": "300",
         "config.use_repo_settings_file": "false",
         "config.repo_context_files": context_paths(paths),
         "config.repo_context_from_default_branch": "true",
@@ -233,7 +233,7 @@ def main(authorize_only=False):
     with summary.open("a") as output:
         output.write(f"PR: {repository}#{pr['number']}\n\nHead: `{pr['head']['sha']}`\n\n")
         output.write("PR-Agent v0.50.0 · OpenCode Go / DeepSeek V4.1 Flash.\n\n")
-        output.write("Limits: 3 review chunks, 2 suggestion chunks, 1 transient retry, 10-minute job timeout. "
+        output.write("Limits: 3 review chunks, 2 suggestion chunks, 1 transient retry, 5-minute request timeout, 10-minute job timeout. "
                      "Self-reflection adds calls; these are not a total API-call cap. "
                      "Actual model usage and any omitted coverage appear in the PR-Agent comments.\n\n")
     with tempfile.TemporaryDirectory(prefix="pr-agent-event-") as directory:
