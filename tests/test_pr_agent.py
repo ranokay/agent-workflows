@@ -83,7 +83,7 @@ class EventAuthorizationTests(unittest.TestCase):
             self.assertIsNone(runner.authorize("pull_request", event(), REPOSITORY, API(pr))[0])
 
     def test_bot_sender_and_ordinary_comments_spend_no_api_calls(self):
-        for payload in (comment("hello"), comment("/describe")):
+        for payload in (comment("hello"), comment("/describe"), comment("/reviewer"), comment("/improvement")):
             api = API()
             self.assertIsNone(runner.authorize("issue_comment", payload, REPOSITORY, api)[0])
             self.assertEqual(api.calls, [])
@@ -92,6 +92,17 @@ class EventAuthorizationTests(unittest.TestCase):
         api = API()
         self.assertIsNone(runner.authorize("pull_request", payload, REPOSITORY, api)[0])
         self.assertEqual(api.calls, [])
+
+    def test_non_pr_and_edited_comments_spend_no_api_calls(self):
+        ordinary_issue = comment()
+        ordinary_issue["issue"].pop("pull_request")
+        edited = comment()
+        edited["action"] = "edited"
+        for payload in (ordinary_issue, edited):
+            with self.subTest(payload=payload):
+                api = API()
+                self.assertIsNone(runner.authorize("issue_comment", payload, REPOSITORY, api)[0])
+                self.assertEqual(api.calls, [])
 
     def test_only_current_write_permissions_can_request_same_repository_and_fork_reviews(self):
         for source in (REPOSITORY, "contributor/fork"):
