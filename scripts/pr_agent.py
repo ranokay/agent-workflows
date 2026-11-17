@@ -23,8 +23,15 @@ class GitHub:
         self.token = token
 
     def get(self, path):
+        return self.request(path)
+
+    def cancel_run(self, repository, run_id):
+        self.request(f"repos/{repository}/actions/runs/{run_id}/cancel", method="POST")
+
+    def request(self, path, method="GET"):
         request = Request(
             "https://api.github.com/" + path,
+            method=method,
             headers={
                 "Authorization": "Bearer " + self.token,
                 "Accept": "application/vnd.github+json",
@@ -33,8 +40,12 @@ class GitHub:
         )
         try:
             with urlopen(request, timeout=30) as response:
+                if response.status == 202:
+                    return None
                 return json.load(response)
         except HTTPError as error:
+            if method == "POST" and error.code == 409:
+                return None  # The older run finished while cancellation was being requested.
             raise RuntimeError(f"GitHub could not verify the request (HTTP {error.code})") from None
 
 
@@ -105,6 +116,26 @@ def context_paths(value):
         if not isinstance(path, str) or not path or PurePosixPath(path).is_absolute() or ".." in PurePosixPath(path).parts:
             raise ValueError("Context paths must stay inside the repository")
     return json.dumps(paths)
+
+
+def cancel_older_runs(api, repository, number, run_id):
+    current = api.get(f"repos/{repository}/actions/runs/{run_id}")
+    candidates = set()
+    for status in ("in_progress", "queued"):
+        page = 1
+        while True:
+            runs = api.get(f"repos/{repository}/actions/workflows/{current['workflow_id']}/runs"
+                           f"?status={status}&per_page=100&page={page}")["workflow_runs"]
+            for run in runs:
+                same_pr = (any(pr.get("number") == number for pr in run.get("pull_requests", []))
+                           or run.get("display_title") == f"PR-Agent #{number}")
+                if same_pr and run["run_number"] < current["run_number"]:
+                    candidates.add(run["id"])
+            if len(runs) < 100:
+                break
+            page += 1
+    for candidate in sorted(candidates):
+        api.cancel_run(repository, candidate)
 
 
 def policy(repository, number, paths):
@@ -190,6 +221,7 @@ def main(authorize_only=False):
         return 0
     pr = normalized["pull_request"]
     if authorize_only:
+        cancel_older_runs(api, repository, pr["number"], os.environ["GITHUB_RUN_ID"])
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
             output.write(f"authorized=true\nnumber={pr['number']}\n")
         with summary.open("a") as output:

@@ -12,7 +12,10 @@ digest. The runner image's GitHub artifact attestation was verified against
 - `/review`, `/improve`, and `/ask QUESTION` comments require the requester's
   current repository write, maintain, or admin permission. A trusted comment can
   review a fork. Other commands and configuration flags are not accepted.
-- Newer workflow runs cancel older runs for the same PR. Before inference the
+- Authorized workflow runs cancel only older runs of this workflow for the same
+  PR, using monotonically increasing run numbers instead of job scheduling order.
+  Actions-write permission is confined to the authorization job; the inference
+  job cannot cancel workflows. Before inference the
   runner checks the current PR head, so obsolete automatic events skip.
 - Code suggestions use GitHub's committable format. Applying and testing them
   remains the responsibility of a human or implementation agent. PR-Agent cannot
@@ -58,12 +61,14 @@ default branch, so that part starts working when this caller is merged:
 
 ```yaml
 name: Optional PR-Agent review
+run-name: 'PR-Agent #${{ github.event.pull_request.number || github.event.issue.number }}'
 on:
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
   issue_comment:
     types: [created]
 permissions:
+  actions: write
   contents: read
   pull-requests: write
 jobs:

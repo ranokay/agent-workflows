@@ -114,6 +114,35 @@ class EventAuthorizationTests(unittest.TestCase):
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_only_older_runs_of_this_workflow_and_pr_can_be_cancelled(self):
+        class RunsAPI:
+            def __init__(self):
+                self.cancelled = []
+
+            def get(self, path):
+                if path.endswith("/runs/123"):
+                    return {"workflow_id": 7, "run_number": 10}
+                if "status=queued" in path:
+                    return {"workflow_runs": [{"id": 6, "run_number": 6, "display_title": "PR-Agent #42"}]}
+                self.assert_workflow(path)
+                return {"workflow_runs": [
+                    {"id": 1, "run_number": 9, "pull_requests": [{"number": 42}]},
+                    {"id": 2, "run_number": 11, "pull_requests": [{"number": 42}]},
+                    {"id": 3, "run_number": 8, "pull_requests": [{"number": 43}]},
+                    {"id": 123, "run_number": 10, "pull_requests": [{"number": 42}]},
+                ]}
+
+            def assert_workflow(self, path):
+                if "/workflows/7/runs?" not in path:
+                    raise AssertionError(path)
+
+            def cancel_run(self, repository, run_id):
+                self.cancelled.append((repository, run_id))
+
+        api = RunsAPI()
+        runner.cancel_older_runs(api, REPOSITORY, 42, "123")
+        self.assertEqual(api.cancelled, [(REPOSITORY, 1), (REPOSITORY, 6)])
+
     def test_authorization_runs_without_model_credentials_and_only_allows_valid_requests(self):
         for payload, permission, allowed in ((comment(), "write", True), (comment(), "read", False),
                                               (comment("hello"), "admin", False)):
@@ -125,12 +154,15 @@ class RuntimeTests(unittest.TestCase):
                 outputs = path / "outputs"
                 environment = {"GITHUB_EVENT_PATH": str(event_path), "GITHUB_EVENT_NAME": "issue_comment",
                                "GITHUB_REPOSITORY": REPOSITORY, "GITHUB_TOKEN": "test-token",
-                               "GITHUB_OUTPUT": str(outputs), "GITHUB_STEP_SUMMARY": str(path / "summary")}
+                               "GITHUB_OUTPUT": str(outputs), "GITHUB_STEP_SUMMARY": str(path / "summary"),
+                               "GITHUB_RUN_ID": "123"}
                 with patch.dict(os.environ, environment, clear=True), \
                         patch.object(runner, "GitHub", return_value=API(permission=permission)), \
+                        patch.object(runner, "cancel_older_runs") as cancel, \
                         patch.object(runner.subprocess, "run") as run:
                     self.assertEqual(runner.main(authorize_only=True), 0)
                     run.assert_not_called()
+                    self.assertEqual(cancel.called, allowed)
                 lines = outputs.read_text().splitlines()
                 self.assertEqual("authorized=true" in lines, allowed)
 
