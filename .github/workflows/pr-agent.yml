@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
+      actions: write
       contents: read
       pull-requests: read
     outputs:
@@ -32,7 +33,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ranokay/agent-workflows
-          ref: 43f04e8d51284f679e59adcfd535dcb20bcabf73
+          ref: 4cc9dd82917c7abb554a5105a5bf594104a33d4a
           path: .agent-workflows
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -49,15 +50,12 @@ jobs:
     if: needs.authorize.outputs.authorized == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    concurrency:
-      group: pr-agent-${{ github.repository }}-${{ needs.authorize.outputs.number }}
-      cancel-in-progress: true
     steps:
       - name: Load the trusted shared runner
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ranokay/agent-workflows
-          ref: 43f04e8d51284f679e59adcfd535dcb20bcabf73
+          ref: 4cc9dd82917c7abb554a5105a5bf594104a33d4a
           path: .agent-workflows
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
