@@ -52,6 +52,30 @@ host-controlled. `.pr_agent.toml` is deliberately disabled in this pilot; projec
 customization belongs in the selected review documents, which cannot change
 these runtime settings.
 
+Add a caller workflow like this, replacing the pinned commit only after reviewing
+a shared release. `issue_comment` events are delivered to workflows on the
+default branch, so that part starts working when this caller is merged:
+
+```yaml
+name: Optional PR-Agent review
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  review:
+    if: github.event_name == 'issue_comment' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: ranokay/agent-workflows/.github/workflows/pr-agent.yml@fba49db8089ccc903fae9e44114793983e2c51ef
+    with:
+      context-files: '["AGENTS.md","CODING_STANDARDS.md","docs/agents/pr-review.md"]'
+    secrets:
+      opencode-key: ${{ secrets.PR_AGENT_OPENCODE_KEY }}
+```
+
 The reusable workflow pins the shared implementation separately from its own
 workflow commit. Consumers pin the workflow commit; neither workflow code nor
 the runner is fetched from a moving branch. To release a change, commit the
