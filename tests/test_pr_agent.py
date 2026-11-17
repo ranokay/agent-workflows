@@ -195,6 +195,9 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(json.loads(settings["config.fallback_models"]), [])
         self.assertEqual(settings["config.use_repo_settings_file"], "false")
         self.assertEqual(settings["config.restricted_mode"], "true")
+        self.assertEqual(settings["pr_code_suggestions.committable_code_suggestions"], "false")
+        self.assertEqual(settings["pr_code_suggestions.dual_publishing_score_threshold"],
+                         settings["pr_code_suggestions.suggestions_score_threshold"])
         self.assertLess(int(settings["pr_code_suggestions.score_on_reflection_failure"]),
                         int(settings["pr_code_suggestions.suggestions_score_threshold"]))
 

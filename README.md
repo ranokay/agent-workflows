@@ -17,7 +17,9 @@ digest. The runner image's GitHub artifact attestation was verified against
   Actions-write permission is confined to the authorization job; the inference
   job cannot cancel workflows. Before inference the
   runner checks the current PR head, so obsolete automatic events skip.
-- Code suggestions use GitHub's committable format. Applying and testing them
+- Code suggestions publish a summary with usage and coverage details, plus
+  GitHub's committable format for suggestions passing the same score threshold.
+  Applying and testing them
   remains the responsibility of a human or implementation agent. PR-Agent cannot
   push commits, approve, merge, rewrite descriptions, or resolve human threads.
 - Missing model credentials skip safely. Inference errors produce a failed
