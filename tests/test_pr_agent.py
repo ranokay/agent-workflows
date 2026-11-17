@@ -62,6 +62,11 @@ class EventAuthorizationTests(unittest.TestCase):
         pr["user"]["type"] = "Bot"
         self.assertIsNone(runner.authorize("pull_request", event(), REPOSITORY, API(pr))[0])
 
+    def test_a_maintainer_command_also_skips_draft_prs(self):
+        pr = pull_request()
+        pr["draft"] = True
+        self.assertIsNone(runner.authorize("issue_comment", comment(), REPOSITORY, API(pr))[0])
+
     def test_closed_draft_fork_and_superseded_automatic_runs_are_skipped(self):
         cases = []
         for field, value in (("state", "closed"), ("draft", True)):
@@ -109,6 +114,26 @@ class EventAuthorizationTests(unittest.TestCase):
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_authorization_runs_without_model_credentials_and_only_allows_valid_requests(self):
+        for payload, permission, allowed in ((comment(), "write", True), (comment(), "read", False),
+                                              (comment("hello"), "admin", False)):
+            with self.subTest(permission=permission, command=payload["comment"]["body"]), \
+                    tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                event_path = path / "event.json"
+                event_path.write_text(json.dumps(payload))
+                outputs = path / "outputs"
+                environment = {"GITHUB_EVENT_PATH": str(event_path), "GITHUB_EVENT_NAME": "issue_comment",
+                               "GITHUB_REPOSITORY": REPOSITORY, "GITHUB_TOKEN": "test-token",
+                               "GITHUB_OUTPUT": str(outputs), "GITHUB_STEP_SUMMARY": str(path / "summary")}
+                with patch.dict(os.environ, environment, clear=True), \
+                        patch.object(runner, "GitHub", return_value=API(permission=permission)), \
+                        patch.object(runner.subprocess, "run") as run:
+                    self.assertEqual(runner.main(authorize_only=True), 0)
+                    run.assert_not_called()
+                lines = outputs.read_text().splitlines()
+                self.assertEqual("authorized=true" in lines, allowed)
+
     def test_missing_model_key_skips_without_contacting_github_or_docker(self):
         with tempfile.TemporaryDirectory() as directory:
             summary = Path(directory) / "summary.md"

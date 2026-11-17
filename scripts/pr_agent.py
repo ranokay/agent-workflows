@@ -1,5 +1,6 @@
 """Authorize GitHub events, then run the pinned upstream PR-Agent image."""
 
+import argparse
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -80,9 +81,9 @@ def authorize(event_name, event, repository, api):
         return None, "PR is closed"
     if pr.get("user", {}).get("type") == "Bot":
         return None, "Bot-authored PR"
+    if pr.get("draft"):
+        return None, "Draft PR"
     if event_name != "issue_comment":
-        if pr.get("draft"):
-            return None, "Draft PR"
         if pr.get("head", {}).get("repo", {}).get("full_name") != repository:
             return None, "Fork PR requires a maintainer command"
         if event.get("pull_request", {}).get("head", {}).get("sha") != pr["head"]["sha"]:
@@ -168,10 +169,13 @@ def docker_command(event_path, event_name, settings, name):
     return command + [IMAGE]
 
 
-def main():
+def main(authorize_only=False):
     summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
     summary.write_text("## Optional PR-Agent review\n\n")
-    if not os.environ.get("OPENAI__KEY"):
+    if authorize_only:
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write("authorized=false\n")
+    if not authorize_only and not os.environ.get("OPENAI__KEY"):
         summary.write_text(summary.read_text() + "Skipped: PR_AGENT_OPENCODE_KEY is not configured.\n")
         return 0
     api = GitHub(os.environ["GITHUB_TOKEN"])
@@ -185,6 +189,12 @@ def main():
             output.write(f"Skipped: {reason}.\n")
         return 0
     pr = normalized["pull_request"]
+    if authorize_only:
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write(f"authorized=true\nnumber={pr['number']}\n")
+        with summary.open("a") as output:
+            output.write(f"Authorized request for {repository}#{pr['number']}.\n")
+        return 0
     settings = policy(repository, pr["number"], os.environ["REVIEW_CONTEXT_FILES"])
     with summary.open("a") as output:
         output.write(f"PR: {repository}#{pr['number']}\n\nHead: `{pr['head']['sha']}`\n\n")
@@ -211,8 +221,11 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--authorize-only", action="store_true")
+    arguments = parser.parse_args()
     try:
-        sys.exit(main())
+        sys.exit(main(arguments.authorize_only))
     except (RuntimeError, ValueError, KeyError, OSError) as error:
         print(f"PR-Agent could not run: {error}", file=sys.stderr)
         sys.exit(1)
