@@ -85,7 +85,7 @@ jobs:
         (startsWith(github.event.comment.body, '/review') ||
          startsWith(github.event.comment.body, '/improve') ||
          startsWith(github.event.comment.body, '/ask '))))
-    uses: ranokay/agent-workflows/.github/workflows/pr-agent.yml@d593485ea2a81edc5514ed829155a00e7d5bc4ac
+    uses: ranokay/agent-workflows/.github/workflows/pr-agent.yml@c9cfc646c4e6fbb5efaa44642a64a23a06c8b336
     with:
       context-files: '["AGENTS.md","CODING_STANDARDS.md","docs/agents/pr-review.md"]'
     secrets:
